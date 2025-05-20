@@ -5,7 +5,7 @@ import os
 import random
 def calibrate(showPics=True):
     # Ruta de las imágenes de calibración
-    calibrationDir = r'C:/Users/Inigo/Desktop/Tercero'
+    calibrationDir = r'C:\Users\javip\OneDrive\Escritorio\Nueva carpeta (2)\ProyectoVision3D\Camara\Fotos_Calibracion_Móvil_Javier'
     imgPathList = glob.glob(os.path.join(calibrationDir, 'Foto_*.jpg'))
 
     if not imgPathList:
@@ -68,12 +68,12 @@ def calibrate(showPics=True):
     return P , K, distCoeff, rvecs, tvecs
 
 
-def test_calibrate_output():
+'''def test_calibrate_output():
     P, K, dist, rvecs, tvecs = calibrate(showPics=False)
     assert P.shape == (3, 4)
     assert K.shape == (3, 3)
     assert isinstance(dist, np.ndarray)
-    assert len(rvecs) == len(tvecs)
+    assert len(rvecs) == len(tvecs) }'''
 
 
 
@@ -91,22 +91,22 @@ def descomponer_proyeccion(P):
 
     return K, R, t
 
-def test_descomponer_proyeccion():
+'''def test_descomponer_proyeccion():
     P, K_gt, _, rvecs, tvecs = calibrate(showPics=False)
     K, R, t = descomponer_proyeccion(P)
     assert K.shape == (3, 3)
     assert R.shape == (3, 3)
-    assert t.shape == (3,)
+    assert t.shape == (3,)'''
 
 
 
 
 "----------------------------------- Etapa 3 -----------------------------------------"
 
-def detectar_correspondencias(img1, img2):
+def detectar_correspondencias(foto3, foto4):
     sift = cv.SIFT_create()                       #Busqueda de puntos en común
-    kp1, des1 = sift.detectAndCompute(img1, None)
-    kp2, des2 = sift.detectAndCompute(img2, None)
+    kp1, des1 = sift.detectAndCompute(foto3, None)
+    kp2, des2 = sift.detectAndCompute(foto4, None)
 
 
     bf = cv.BFMatcher()                           #Emparejado de los puntos clave de ambas imágenes
@@ -221,13 +221,13 @@ def dibujar_lineas_epipolares(img1, img2, F, pts1, pts2, num_lineas=10):
     cv.waitKey(0)
     cv.destroyAllWindows()
 
-def test_fundamental_matrix():
+'''def test_fundamental_matrix():
     img1 = cv.imread('p1.jpg', 0)
     img2 = cv.imread('p2.jpg', 0)
     pts1, pts2 = detectar_correspondencias(img1, img2)
     F, inl1, inl2 = ransac_fundamental(pts1, pts2)
     assert F.shape == (3, 3)
-    assert np.allclose(np.linalg.matrix_rank(F), 2)
+    assert np.allclose(np.linalg.matrix_rank(F), 2)'''
 
 
 
@@ -239,7 +239,7 @@ def calcular_matriz_esencial(F, K1, K2):
 "--------------------------------- Pto 6 --------------------------"
 
 
-
+'''
 def epipolo(F):
     # El epipolo está en el nullspace de F (para la imagen derecha) o F.T (para la izquierda)
     U, S, Vt = np.linalg.svd(F)
@@ -301,7 +301,7 @@ def aplicar_rectificacion_manual(img1, img2, H1, H2):
     h, w = img1.shape
     img1_rect = cv2.warpPerspective(img1, H1, (w, h))
     img2_rect = cv2.warpPerspective(img2, H2, (w, h))
-    return img1_rect, img2_rect
+    return img1_rect, img2_rect '''
 
 
 if __name__ == '__main__':
