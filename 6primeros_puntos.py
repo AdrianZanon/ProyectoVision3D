@@ -66,7 +66,7 @@ def calibrate(showPics=True):
     R, _ = cv.Rodrigues(rvecs[0])  #Cálculo de la matriz de rotación con Rodrigues
     Rt = np.hstack((R, tvecs[0]))  #Matriz de rotación y traslación combinadas para pasar de 3x3 a 3x4
     P = K @ Rt #Devolución de la matriz de P
-    return P
+    return P 
 
 
 '''def test_calibrate_output():
