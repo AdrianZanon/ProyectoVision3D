@@ -5,7 +5,7 @@ import os
 import random
 def calibrate(showPics=True):
     # Ruta de las imágenes de calibración
-    calibrationDir = r'C:\Users\javip\OneDrive\Escritorio\Nueva carpeta (2)\ProyectoVision3D\Camara\Fotos_Calibracion_Móvil_Javier'
+    calibrationDir = r'C:\Users\javip\OneDrive\Escritorio\Nueva carpeta (2)\ProyectoVision3D\Camara\Fotos_Javier'
     imgPathList = glob.glob(os.path.join(calibrationDir, 'Foto_*.jpg'))
 
     if not imgPathList:
@@ -40,7 +40,8 @@ def calibrate(showPics=True):
 
             if showPics:
                 cv.drawChessboardCorners(imgBGR, (nCols, nRows), cornersRefined, cornersFound)
-                cv.imshow('Chessboard', imgBGR)
+                imgBGR_resized = cv.resize(imgBGR, None, fx=0.5, fy=0.5)
+                cv.imshow('Chessboard', imgBGR_resized)
                 cv.waitKey(500)
 
     cv.destroyAllWindows()
@@ -65,7 +66,7 @@ def calibrate(showPics=True):
     R, _ = cv.Rodrigues(rvecs[0])  #Cálculo de la matriz de rotación con Rodrigues
     Rt = np.hstack((R, tvecs[0]))  #Matriz de rotación y traslación combinadas para pasar de 3x3 a 3x4
     P = K @ Rt #Devolución de la matriz de P
-    return P , K, distCoeff, rvecs, tvecs
+    return P
 
 
 '''def test_calibrate_output():
@@ -74,7 +75,6 @@ def calibrate(showPics=True):
     assert K.shape == (3, 3)
     assert isinstance(dist, np.ndarray)
     assert len(rvecs) == len(tvecs) }'''
-
 
 
 
@@ -103,10 +103,10 @@ def descomponer_proyeccion(P):
 
 "----------------------------------- Etapa 3 -----------------------------------------"
 
-def detectar_correspondencias(foto3, foto4):
+def detectar_correspondencias(img1, img2):
     sift = cv.SIFT_create()                       #Busqueda de puntos en común
-    kp1, des1 = sift.detectAndCompute(foto3, None)
-    kp2, des2 = sift.detectAndCompute(foto4, None)
+    kp1, des1 = sift.detectAndCompute(img1, None)
+    kp2, des2 = sift.detectAndCompute(img2, None)
 
 
     bf = cv.BFMatcher()                           #Emparejado de los puntos clave de ambas imágenes
@@ -216,14 +216,21 @@ def dibujar_lineas_epipolares(img1, img2, F, pts1, pts2, num_lineas=10):
         cv.circle(img2_color, tuple(np.int32(pt2)), 5, color, -1)
 
     # Mostrar imágenes
-    cv.imshow('Epipolar Lines - Izq', img1_color)
-    cv.imshow('Epipolar Lines - Der', img2_color)
+
+
+    img1_resized = cv.resize(img1_color, None, fx=0.5, fy=0.5)
+    img2_resized = cv.resize(img2_color, None, fx=0.5, fy=0.5)
+
+    cv.imshow('Epipolar Lines - Izq', img1_resized)
+    cv.imshow('Epipolar Lines - Der', img2_resized)
+
     cv.waitKey(0)
     cv.destroyAllWindows()
 
+
 '''def test_fundamental_matrix():
-    img1 = cv.imread('p1.jpg', 0)
-    img2 = cv.imread('p2.jpg', 0)
+    img1 = cv.imread('foto3.jpg', 0)
+    img2 = cv.imread('foto4.jpg', 0)
     pts1, pts2 = detectar_correspondencias(img1, img2)
     F, inl1, inl2 = ransac_fundamental(pts1, pts2)
     assert F.shape == (3, 3)
@@ -234,12 +241,11 @@ def dibujar_lineas_epipolares(img1, img2, F, pts1, pts2, num_lineas=10):
 "--------------------------------- Pto 4 ------------------------"
 
 def calcular_matriz_esencial(F, K1, K2):
-    return K2.T @ F @ K1
+    E= K2.T @ F @ K1
+    return E
 
 "--------------------------------- Pto 6 --------------------------"
 
-
-'''
 def epipolo(F):
     # El epipolo está en el nullspace de F (para la imagen derecha) o F.T (para la izquierda)
     U, S, Vt = np.linalg.svd(F)
@@ -299,19 +305,38 @@ def rectificacion_estereoscopica_no_calibrada_manual(F, img1, img2):
 
 def aplicar_rectificacion_manual(img1, img2, H1, H2):
     h, w = img1.shape
-    img1_rect = cv2.warpPerspective(img1, H1, (w, h))
-    img2_rect = cv2.warpPerspective(img2, H2, (w, h))
-    return img1_rect, img2_rect '''
+    img1_rect = cv.warpPerspective(img1, H1, (w, h))
+    img2_rect = cv.warpPerspective(img2, H2, (w, h))
+    return img1_rect, img2_rect
 
 
 if __name__ == '__main__':
     P = calibrate(showPics=True)
     K, R, t = descomponer_proyeccion(P)
-    img1 = cv.imread('p1.jpg', cv.IMREAD_GRAYSCALE)
-    img2 = cv.imread('p2.jpg', cv.IMREAD_GRAYSCALE)
+    img1 = cv.imread('foto3.jpg', cv.IMREAD_GRAYSCALE)
+    img2 = cv.imread('foto4.jpg', cv.IMREAD_GRAYSCALE)
+
+    if img1 is None or img2 is None:
+        print("No se pudieron cargar las imágenes de prueba.")
+        exit()
 
     pts1, pts2 = detectar_correspondencias(img1, img2)
     F, inliers1, inliers2 = ransac_fundamental(pts1, pts2)
     dibujar_lineas_epipolares(img1, img2, F, inliers1, inliers2)
+
+    E = calcular_matriz_esencial(F, K, K)
+    print("Matriz esencial (E):\n", E)
+
+    H1, H2 = rectificacion_estereoscopica_no_calibrada_manual(F, img1, img2)
+    img1_rect, img2_rect = aplicar_rectificacion_manual(img1, img2, H1, H2)
+
+    # Mostrar resultados de rectificación
+    img1_resized = cv.resize(img1_rect, None, fx=0.5, fy=0.5)
+    img2_resized = cv.resize(img2_rect, None, fx=0.5, fy=0.5)
+    cv.imshow('Imagen 1 Rectificada', img1_resized)
+    cv.imshow('Imagen 2 Rectificada', img2_resized)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
 
 
