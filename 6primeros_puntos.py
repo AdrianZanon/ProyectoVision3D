@@ -65,7 +65,15 @@ def calibrate(showPics=True):
     R, _ = cv.Rodrigues(rvecs[0])  #Cálculo de la matriz de rotación con Rodrigues
     Rt = np.hstack((R, tvecs[0]))  #Matriz de rotación y traslación combinadas para pasar de 3x3 a 3x4
     P = K @ Rt #Devolución de la matriz de P
-    return P
+    return P , K, distCoeff, rvecs, tvecs
+
+
+def test_calibrate_output():
+    P, K, dist, rvecs, tvecs = calibrate(showPics=False)
+    assert P.shape == (3, 4)
+    assert K.shape == (3, 3)
+    assert isinstance(dist, np.ndarray)
+    assert len(rvecs) == len(tvecs)
 
 
 
@@ -82,6 +90,15 @@ def descomponer_proyeccion(P):
         R *= -1
 
     return K, R, t
+
+def test_descomponer_proyeccion():
+    P, K_gt, _, rvecs, tvecs = calibrate(showPics=False)
+    K, R, t = descomponer_proyeccion(P)
+    assert K.shape == (3, 3)
+    assert R.shape == (3, 3)
+    assert t.shape == (3,)
+
+
 
 
 "----------------------------------- Etapa 3 -----------------------------------------"
@@ -204,6 +221,16 @@ def dibujar_lineas_epipolares(img1, img2, F, pts1, pts2, num_lineas=10):
     cv.waitKey(0)
     cv.destroyAllWindows()
 
+def test_fundamental_matrix():
+    img1 = cv.imread('p1.jpg', 0)
+    img2 = cv.imread('p2.jpg', 0)
+    pts1, pts2 = detectar_correspondencias(img1, img2)
+    F, inl1, inl2 = ransac_fundamental(pts1, pts2)
+    assert F.shape == (3, 3)
+    assert np.allclose(np.linalg.matrix_rank(F), 2)
+
+
+
 "--------------------------------- Pto 4 ------------------------"
 
 def calcular_matriz_esencial(F, K1, K2):
@@ -286,6 +313,5 @@ if __name__ == '__main__':
     pts1, pts2 = detectar_correspondencias(img1, img2)
     F, inliers1, inliers2 = ransac_fundamental(pts1, pts2)
     dibujar_lineas_epipolares(img1, img2, F, inliers1, inliers2)
-
 
 
