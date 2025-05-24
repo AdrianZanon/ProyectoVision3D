@@ -3,6 +3,8 @@ import cv2 as cv
 import glob
 import os
 import random
+import matplotlib.pyplot as plt
+
 def calibrate(showPics=True):
     # Ruta de las imágenes de calibración
     calibrationDir = r'C:\Users\javip\OneDrive\Escritorio\Nueva carpeta (2)\ProyectoVision3D\Camara\Fotos_Javier'
@@ -408,8 +410,119 @@ def dibujar_lineas_epipolares_rectificadas(img1, img2, F_rect, pts1, pts2, H1, H
     cv.destroyAllWindows()
 
 '''----------------------------------------------Etapa7----------------------------------------------------------'''
+def generate_point_cloud(img_left, img_right, K, baseline, save_visualizations=None, show_pics=False):
+    """
+    Genera una nube de puntos 3D a partir de imágenes rectificadas usando block matching.
 
+    Args:
+        img_left, img_right (np.ndarray): Imágenes rectificadas en escala de grises.
+        K (np.ndarray): Matriz intrínseca.
+        baseline (float): Línea base entre cámaras (en metros).
+        save_visualizations (str, opcional): Directorio para guardar visualizaciones.
+        show_pics (bool): Mostrar imágenes (default: False).
 
+    Returns:
+        np.ndarray: Nube de puntos 3D (Nx3).
+    """
+    if img_left is None or img_right is None or img_left.shape != img_right.shape:
+        print("Error: Imágenes no válidas.")
+        return None
+
+    # Asegurar que son en escala de grises
+    if len(img_left.shape) == 3:
+        img_left = cv.cvtColor(img_left, cv.COLOR_BGR2GRAY)
+    if len(img_right.shape) == 3:
+        img_right = cv.cvtColor(img_right, cv.COLOR_BGR2GRAY)
+
+    window_size = 5
+    max_disparity = 64
+    h, w = img_left.shape
+    disparity = np.zeros((h, w), dtype=np.float32)
+
+    for y in range(window_size, h - window_size):
+        for x in range(window_size + max_disparity, w - window_size):
+            patch_left = img_left[y - window_size:y + window_size + 1,
+                                  x - window_size:x + window_size + 1]
+            min_sad = float('inf')
+            best_d = 0
+            for d in range(max_disparity):
+                x_r = x - d
+                if x_r - window_size < 0 or x_r + window_size + 1 > w:
+                    continue
+                patch_right = img_right[y - window_size:y + window_size + 1,
+                                        x_r - window_size:x_r + window_size + 1]
+                sad = np.sum(np.abs(patch_left - patch_right))
+                if sad < min_sad:
+                    min_sad = sad
+                    best_d = d
+            disparity[y, x] = best_d
+
+    # Visualización disparidad
+    if save_visualizations:
+        os.makedirs(save_visualizations, exist_ok=True)
+        disp_vis = (disparity / max_disparity * 255).astype(np.uint8)
+        cv.imwrite(os.path.join(save_visualizations, "disparity.png"), disp_vis)
+
+    if show_pics:
+        disp_vis = (disparity / max_disparity * 255).astype(np.uint8)
+        cv.imshow("Mapa de Disparidad", disp_vis)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
+
+    # Triangulación para generar la nube
+    fx = K[0, 0]
+    cx = K[0, 2]
+    cy = K[1, 2]
+
+    points_3d = []
+    colors = []
+
+    for y in range(h):
+        for x in range(w):
+            d = disparity[y, x]
+            if d > 0:
+                Z = fx * baseline / d
+                X = (x - cx) * Z / fx
+                Y = (y - cy) * Z / fx
+                points_3d.append([X, Y, Z])
+                # Guardar color si la imagen original tiene color
+                if len(img_left.shape) == 3:
+                    colors.append(img_left[y, x])
+                else:
+                    colors.append([img_left[y, x]] * 3)
+
+    points_3d = np.array(points_3d)
+    colors = np.array(colors)
+
+    # Guardar como .ply
+    if save_visualizations:
+        ply_file = os.path.join(save_visualizations, "point_cloud.ply")
+        with open(ply_file, 'w') as f:
+            f.write("ply\nformat ascii 1.0\n")
+            f.write(f"element vertex {len(points_3d)}\n")
+            f.write("property float x\nproperty float y\nproperty float z\n")
+            f.write("property uchar red\nproperty uchar green\nproperty uchar blue\n")
+            f.write("end_header\n")
+            for p, c in zip(points_3d, colors):
+                f.write(f"{p[0]} {p[1]} {p[2]} {int(c[2])} {int(c[1])} {int(c[0])}\n")
+
+    if show_pics:
+        # Normalizar para visualizar como imagen (X-Z)
+        xz = points_3d[:, [0, 2]]  # Solo X y Z
+        xz -= np.min(xz, axis=0)  # Trasladar para que el mínimo sea (0,0)
+        xz *= 500 / np.max(xz)  # Escalar a 500x500 máx
+
+        xz = xz.astype(np.int32)
+        img_vis = np.zeros((512, 512, 3), dtype=np.uint8)
+
+        for pt in xz:
+            x, z = pt
+            if 0 <= x < 512 and 0 <= z < 512:
+                img_vis[z, x] = (255, 255, 255)  # Color blanco
+
+        cv.imshow("Proyección X-Z de la Nube de Puntos", img_vis)
+        cv.waitKey(0)
+        cv.destroyAllWindows()
 
 
 if __name__ == '__main__':
@@ -458,3 +571,19 @@ if __name__ == '__main__':
     print("Matriz fundamental rectificada:\n", F_rect)
 
     dibujar_lineas_epipolares_rectificadas(img1_rect, img2_rect, F_rect, inliers1, inliers2, H1, H2)
+
+    nube=generate_point_cloud(img1_rect, img2_rect, K=K, baseline=0.1, show_pics=True)
+    print(f"Nube de puntos generada con {nube.shape[0]} puntos válidos.")
+    print("Primeros 5 puntos 3D:\n", nube[:5])
+
+    # Opcional: mostrar nube en 3D con matplotlib
+    from mpl_toolkits.mplot3d import Axes3D
+
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(nube[:, 0], nube[:, 1], nube[:, 2], s=0.5, c='blue')
+    ax.set_xlabel('X (m)')
+    ax.set_ylabel('Y (m)')
+    ax.set_zlabel('Z (m)')
+    ax.set_title('Nube de puntos 3D')
+    plt.show()
