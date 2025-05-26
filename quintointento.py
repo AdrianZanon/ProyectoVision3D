@@ -374,27 +374,56 @@ def dibujar_lineas_epipolares(img1, img2, F, pts1, pts2, num_lineas=10, manual_p
 
 
 # ===================== Visualización Epipolar Rectificada =========================
-def dibujar_lineas_epipolares_rectificadas(img1, img2, F_rect, H1, H2, manual_points):
-    pts_left = cv.perspectiveTransform(manual_points[0].reshape(-1, 1, 2).astype(np.float32), H1)
-    pts_right = cv.perspectiveTransform(manual_points[1].reshape(-1, 1, 2).astype(np.float32), H2)
+# ===================== Visualización Epipolar =========================
+def dibujar_lineas_epipolares(img1, img2, F, pts1, pts2, num_lineas=4, manual_points=None):
+    img1_color = cv.cvtColor(img1, cv.COLOR_GRAY2BGR) if len(img1.shape) == 2 else img1.copy()
+    img2_color = cv.cvtColor(img2, cv.COLOR_GRAY2BGR) if len(img2.shape) == 2 else img2.copy()
 
-    for pt1, pt2 in zip(pts_left.squeeze(), pts_right.squeeze()):
-        cv.circle(img1, tuple(map(int, pt1)), 8, (0, 255, 0), -1)
-        cv.circle(img2, tuple(map(int, pt2)), 8, (0, 255, 0), -1)
+    indices = np.random.choice(len(pts1), size=min(num_lineas, len(pts1)), replace=False)
 
-        line = F_rect @ np.array([pt1[0], pt1[1], 1])
-        x = np.array([0, img2.shape[1]])
-        y = (-line[2] - line[0] * x) / line[1]
-        cv.line(img2, (int(x[0]), int(y[0])), (int(x[1]), int(y[1])), (0, 0, 255), 2)
+    if manual_points is not None:
+        for mp1, mp2 in zip(manual_points[0], manual_points[1]):
+            pt1 = np.array([mp1[0], mp1[1], 1])
+            pt2 = np.array([mp2[0], mp2[1], 1])
 
-        line = F_rect.T @ np.array([pt2[0], pt2[1], 1])
-        y = (-line[2] - line[0] * x) / line[1]
-        cv.line(img1, (int(x[0]), int(y[0])), (int(x[1]), int(y[1])), (0, 0, 255), 2)
+            # Línea epipolar en la segunda imagen
+            line2 = F @ pt1
+            x0, x1 = 0, img2.shape[1]
+            y0 = int(-(line2[2] + line2[0] * x0) / line2[1])
+            y1 = int(-(line2[2] + line2[0] * x1) / line2[1])
+            cv.line(img2_color, (x0, y0), (x1, y1), (0, 255, 0), 2)
+            cv.circle(img1_color, tuple(map(int, mp1)), 10, (0, 255, 0), -1)
+            cv.circle(img2_color, tuple(map(int, mp2)), 10, (0, 255, 0), -1)
 
-    img1 = cv.resize(img1, (800, 600))
-    img2 = cv.resize(img2, (800, 600))
-    cv.imshow('Rectified Left', img1)
-    cv.imshow('Rectified Right', img2)
+            # Línea epipolar en la primera imagen
+            line1 = F.T @ pt2
+            y0 = int(-(line1[2] + line1[0] * x0) / line1[1])
+            y1 = int(-(line1[2] + line1[0] * x1) / line1[1])
+            cv.line(img1_color, (x0, y0), (x1, y1), (0, 255, 0), 2)
+
+    # Líneas epipolares adicionales
+    for i in indices:
+        color = tuple(np.random.randint(0, 255, 3).tolist())
+        pt1 = np.append(pts1[i], 1)
+        pt2 = np.append(pts2[i], 1)
+
+        line2 = F @ pt1
+        x0, x1 = 0, img2.shape[1]
+        y0 = int(-(line2[2] + line2[0] * x0) / line2[1])
+        y1 = int(-(line2[2] + line2[0] * x1) / line2[1])
+        cv.line(img2_color, (x0, y0), (x1, y1), color, 1)
+        cv.circle(img1_color, tuple(map(int, pt1[:2])), 5, color, -1)
+        cv.circle(img2_color, tuple(map(int, pt2[:2])), 5, color, -1)
+
+        line1 = F.T @ pt2
+        y0 = int(-(line1[2] + line1[0] * x0) / line1[1])
+        y1 = int(-(line1[2] + line1[0] * x1) / line1[1])
+        cv.line(img1_color, (x0, y0), (x1, y1), color, 1)
+
+    img1_resized = cv.resize(img1_color, (800, 600))
+    img2_resized = cv.resize(img2_color, (800, 600))
+    cv.imshow('Epipolar Lines - Left', img1_resized)
+    cv.imshow('Epipolar Lines - Right', img2_resized)
     cv.waitKey(0)
     cv.destroyAllWindows()
 
@@ -403,6 +432,8 @@ def dibujar_lineas_epipolares_rectificadas(img1, img2, F_rect, H1, H2, manual_po
 if __name__ == '__main__':
     # Calibración
     P = calibrate(showPics=True)
+    if P is None:
+        exit()
     K, R, t = descomponer_proyeccion(P)
     baseline = np.linalg.norm(t)
 
@@ -417,25 +448,15 @@ if __name__ == '__main__':
     pts1, pts2 = detectar_correspondencias(img1, img2)
     F, inliers1, inliers2 = ransac_fundamental(pts1, pts2)
 
-    # Selección manual de puntos (8 puntos)
+    # Selección manual de puntos
     print("\n=== Seleccione 8 puntos correspondientes en ambas imágenes ===")
     pts_manual_left, pts_manual_right = seleccionar_puntos_manual(img1, img2, num_puntos=8)
 
-    # Dibujar líneas epipolares originales
-    dibujar_lineas_epipolares(img1, img2, F,
-                              np.vstack([inliers1, pts_manual_left]),
-                              np.vstack([inliers2, pts_manual_right]),
-                              num_lineas=10)
+    # Dibujar líneas epipolares con puntos manuales y automáticos
+    dibujar_lineas_epipolares(
+        img1, img2, F,
+        inliers1, inliers2,
+        num_lineas=4,
+        manual_points=(pts_manual_left, pts_manual_right))
 
-    # Rectificación
-    centro = (img1.shape[1] // 2, img1.shape[0] // 2)
-    H1, H2 = rectificacion_estereoscopica_hartley(F, img1, img2, inliers1, inliers2, centro)
-    H1 = asegurar_orientacion(H1)
-    H2 = asegurar_orientacion(H2)
-    img1_rect, img2_rect = aplicar_rectificacion_manual(img1, img2, H1, H2)
-
-    # Dibujar líneas epipolares rectificadas
-    F_rect = np.array([[0, 0, 0], [0, 0, -1], [0, 1, 0]])  # F esperado para imágenes rectificadas
-    dibujar_lineas_epipolares_rectificadas(img1_rect.copy(), img2_rect.copy(),
-                                           F_rect, H1, H2,
-                                           (pts_manual_left, pts_manual_right))
+    
