@@ -1,5 +1,3 @@
-# En este intento llego hasta la etapa 6 , pero tengo que moficar algunas cosas
-
 import numpy as np
 import cv2 as cv
 import glob
@@ -227,43 +225,6 @@ def construir_H_hartley(e, img_shape, centro=None):
     return H
 
 
-def rectificacion_estereoscopica_hartley(F, img1, img2, pts1, pts2, centro=None):
-    e1 = epipolo(F.T)
-    e2 = epipolo(F)
-
-    H1 = construir_H_hartley(e1, img1.shape, centro)
-    M = np.eye(3)
-
-    pts1_hom = np.hstack([pts1, np.ones((pts1.shape[0], 1))]).T
-    pts2_hom = np.hstack([pts2, np.ones((pts2.shape[0], 1))]).T
-
-    y_tilde_L = H1 @ pts1_hom
-    y_tilde_R_temp = H1 @ M @ pts2_hom
-
-    y_tilde_L /= y_tilde_L[2, :]
-    y_tilde_R_temp /= y_tilde_R_temp[2, :]
-
-    Y_tilde_L = y_tilde_L
-    u_tilde_R = y_tilde_R_temp[0, :]
-
-    YTY = Y_tilde_L @ Y_tilde_L.T
-    YTu = Y_tilde_L @ u_tilde_R.T
-    try:
-        a_bar = np.linalg.solve(YTY, YTu)
-    except np.linalg.LinAlgError:
-        a_bar = np.linalg.pinv(YTY) @ YTu
-
-    a, b, c = a_bar
-    A = np.array([
-        [a, b, c],
-        [0, 1, 0],
-        [0, 0, 1]
-    ])
-
-    H2 = A @ H1 @ M
-    return H1, H2
-
-
 def asegurar_orientacion(H):
     if np.linalg.det(H) < 0:
         H[1, :] *= -1
@@ -297,6 +258,84 @@ def aplicar_rectificacion_manual(img1, img2, H1, H2):
     img2_rect = cv.warpPerspective(img2, H2_adj, (new_w, new_h))
 
     return img1_rect, img2_rect
+
+
+# ================ Rectificación sin Calibración (Algoritmo 20.1) ================
+def rectificacion_basada_puntos(F, img1, img2, pts1, pts2, p0=None):
+    """
+    Implementación del algoritmo 20.1 para rectificación estereoscópica sin calibración
+
+    Args:
+        F: Matriz fundamental
+        img1, img2: Imágenes de entrada
+        pts1, pts2: Puntos correspondientes entre imágenes
+        p0: Punto de referencia para minimizar distorsión (opcional)
+
+    Returns:
+        H1, H2: Homografías de rectificación
+        img1_rect, img2_rect: Imágenes rectificadas
+    """
+    # 1. Calcular epipolos
+    e1 = epipolo(F.T)  # Epipolo en imagen 1
+    e2 = epipolo(F)  # Epipolo en imagen 2
+
+    # 2. Si no se proporciona p0, usar un punto alejado de los epipolos
+    h, w = img1.shape[:2]
+    if p0 is None:
+        # Punto en el centro de la imagen, alejado de los epipolos
+        p0 = np.array([w / 2, h / 2, 1])
+        # Si el epipolo está cerca del centro, mover p0
+        if np.linalg.norm(e1[:2] - p0[:2]) < min(w, h) / 4:
+            p0 = np.array([w / 4, h / 4, 1])
+
+    # 3. Construir homografía H1 para la primera imagen
+    H1 = construir_H_hartley(e1, img1.shape, centro=p0[:2])
+
+    # 4. Construir homografía H2 para la segunda imagen
+    # Primero calculamos la transformación de la línea epipolar
+    M = np.eye(3)  # Matriz de transformación para la segunda imagen
+
+    # Convertir puntos a coordenadas homogéneas
+    pts1_hom = np.hstack([pts1, np.ones((pts1.shape[0], 1))]).T
+    pts2_hom = np.hstack([pts2, np.ones((pts2.shape[0], 1))]).T
+
+    # Transformar puntos con H1
+    y_tilde_L = H1 @ pts1_hom
+    y_tilde_R_temp = H1 @ M @ pts2_hom
+
+    # Normalizar coordenadas homogéneas
+    y_tilde_L /= y_tilde_L[2, :]
+    y_tilde_R_temp /= y_tilde_R_temp[2, :]
+
+    Y_tilde_L = y_tilde_L
+    u_tilde_R = y_tilde_R_temp[0, :]
+
+    # Resolver el sistema lineal para encontrar la transformación A
+    YTY = Y_tilde_L @ Y_tilde_L.T
+    YTu = Y_tilde_L @ u_tilde_R.T
+
+    try:
+        a_bar = np.linalg.solve(YTY, YTu)
+    except np.linalg.LinAlgError:
+        a_bar = np.linalg.pinv(YTY) @ YTu
+
+    a, b, c = a_bar
+    A = np.array([
+        [a, b, c],
+        [0, 1, 0],
+        [0, 0, 1]
+    ])
+
+    H2 = A @ H1 @ M
+
+    # Asegurar que las homografías mantengan la orientación
+    H1 = asegurar_orientacion(H1)
+    H2 = asegurar_orientacion(H2)
+
+    # Aplicar rectificación
+    img1_rect, img2_rect = aplicar_rectificacion_manual(img1, img2, H1, H2)
+
+    return H1, H2, img1_rect, img2_rect
 
 
 # ================ Selección Manual de Puntos ===================
@@ -333,47 +372,6 @@ def seleccionar_puntos_manual(img_left, img_right, num_puntos=8):
     return np.array(puntos['left']), np.array(puntos['right'])
 
 
-# ===================== Visualización Epipolar =========================
-def dibujar_lineas_epipolares(img1, img2, F, pts1, pts2, num_lineas=10, manual_points=None):
-    img1_color = cv.cvtColor(img1, cv.COLOR_GRAY2BGR) if len(img1.shape) == 2 else img1.copy()
-    img2_color = cv.cvtColor(img2, cv.COLOR_GRAY2BGR) if len(img2.shape) == 2 else img2.copy()
-
-    indices = np.random.choice(len(pts1), size=min(num_lineas, len(pts1)), replace=False)
-
-    if manual_points is not None:
-        for mp1, mp2 in zip(manual_points[0], manual_points[1]):
-            cv.circle(img1_color, tuple(map(int, mp1)), 8, (0, 255, 0), -1)
-            cv.circle(img2_color, tuple(map(int, mp2)), 8, (0, 255, 0), -1)
-
-    for i in indices:
-        color = tuple(np.random.randint(0, 255, 3).tolist())
-        pt1 = pts1[i]
-        pt2 = pts2[i]
-
-        cv.circle(img1_color, tuple(map(int, pt1)), 5, color, -1)
-        cv.circle(img2_color, tuple(map(int, pt2)), 5, color, -1)
-
-        line2 = F @ np.array([pt1[0], pt1[1], 1])
-        x0, x1 = 0, img2.shape[1]
-        y0 = int(-(line2[2] + line2[0] * x0) / line2[1])
-        y1 = int(-(line2[2] + line2[0] * x1) / line2[1])
-        cv.line(img2_color, (x0, y0), (x1, y1), color, 1)
-
-        line1 = F.T @ np.array([pt2[0], pt2[1], 1])
-        y0 = int(-(line1[2] + line1[0] * x0) / line1[1])
-        y1 = int(-(line1[2] + line1[0] * x1) / line1[1])
-        cv.line(img1_color, (x0, y0), (x1, y1), color, 1)
-
-    img1_resized = cv.resize(img1_color, (800, 600))
-    img2_resized = cv.resize(img2_color, (800, 600))
-
-    cv.imshow('Epipolar Lines - Left', img1_resized)
-    cv.imshow('Epipolar Lines - Right', img2_resized)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
-
-
-# ===================== Visualización Epipolar Rectificada =========================
 # ===================== Visualización Epipolar =========================
 def dibujar_lineas_epipolares(img1, img2, F, pts1, pts2, num_lineas=4, manual_points=None):
     img1_color = cv.cvtColor(img1, cv.COLOR_GRAY2BGR) if len(img1.shape) == 2 else img1.copy()
@@ -428,6 +426,46 @@ def dibujar_lineas_epipolares(img1, img2, F, pts1, pts2, num_lineas=4, manual_po
     cv.destroyAllWindows()
 
 
+# ===================== Visualización de Resultados =====================
+def visualizar_rectificacion(img1, img2, img1_rect, img2_rect):
+    """Visualiza las imágenes originales y rectificadas"""
+    # Convertir a color si son en escala de grises
+    img1_color = cv.cvtColor(img1, cv.COLOR_GRAY2BGR) if len(img1.shape) == 2 else img1.copy()
+    img2_color = cv.cvtColor(img2, cv.COLOR_GRAY2BGR) if len(img2.shape) == 2 else img2.copy()
+
+    # Mostrar imágenes originales
+    plt.figure(figsize=(12, 8))
+    plt.subplot(2, 2, 1)
+    plt.imshow(cv.cvtColor(img1_color, cv.COLOR_BGR2RGB))
+    plt.title('Imagen Izquierda Original')
+    plt.axis('off')
+
+    plt.subplot(2, 2, 2)
+    plt.imshow(cv.cvtColor(img2_color, cv.COLOR_BGR2RGB))
+    plt.title('Imagen Derecha Original')
+    plt.axis('off')
+
+    # Mostrar imágenes rectificadas
+    plt.subplot(2, 2, 3)
+    plt.imshow(cv.cvtColor(img1_rect, cv.COLOR_BGR2RGB))
+    plt.title('Imagen Izquierda Rectificada')
+    plt.axis('off')
+
+    plt.subplot(2, 2, 4)
+    plt.imshow(cv.cvtColor(img2_rect, cv.COLOR_BGR2RGB))
+    plt.title('Imagen Derecha Rectificada')
+    plt.axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
+    # Mostrar imágenes rectificadas lado a lado para comparación
+    stacked_rect = np.hstack((img1_rect, img2_rect))
+    cv.imshow('Imágenes Rectificadas (Izq | Der)', stacked_rect)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
+
 # ============================ Main =====================================
 if __name__ == '__main__':
     # Calibración
@@ -459,4 +497,30 @@ if __name__ == '__main__':
         num_lineas=4,
         manual_points=(pts_manual_left, pts_manual_right))
 
-    
+    # Rectificación estereoscópica sin calibración
+    print("\n=== Rectificación estereoscópica sin calibración ===")
+
+    # Usar el primer punto manual como punto de referencia p0
+    p0 = np.append(pts_manual_left[0], 1)
+
+    H1, H2, img1_rect, img2_rect = rectificacion_basada_puntos(
+        F, img1, img2, inliers1, inliers2, p0)
+
+    # Visualizar resultados
+    visualizar_rectificacion(img1, img2, img1_rect, img2_rect)
+
+    # Verificar rectificación calculando la matriz fundamental de las imágenes rectificadas
+    # Debería ser aproximadamente [0 0 0; 0 0 -1; 0 1 0]
+    pts1_rect = cv.perspectiveTransform(inliers1.reshape(-1, 1, 2), H1).reshape(-1, 2)
+    pts2_rect = cv.perspectiveTransform(inliers2.reshape(-1, 1, 2), H2).reshape(-1, 2)
+
+    F_rect, _, _ = ransac_fundamental(pts1_rect, pts2_rect, iteraciones=1000)
+    print("\nMatriz fundamental después de rectificación (debería ser [0 0 0; 0 0 -1; 0 1 0]):")
+    print(F_rect)
+
+    # Mostrar líneas epipolares después de rectificación
+    print("\n=== Líneas epipolares después de rectificación ===")
+    dibujar_lineas_epipolares(
+        img1_rect, img2_rect, F_rect,
+        pts1_rect, pts2_rect,
+        num_lineas=4)
