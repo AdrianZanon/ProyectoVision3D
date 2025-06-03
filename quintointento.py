@@ -582,8 +582,8 @@ if __name__ == '__main__':
     baseline = np.linalg.norm(t)
 
     # Cargar imágenes
-    img1 = cv.imread('foto3.jpg')
-    img2 = cv.imread('foto4.jpg')
+    img1 = cv.imread('foto5.jpg')
+    img2 = cv.imread('foto6.jpg')
     if img1 is None or img2 is None:
         print("Error cargando imágenes")
         exit()
