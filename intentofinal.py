@@ -492,8 +492,8 @@ if __name__ == '__main__':
 
     _, R, t = descomponer_proyeccion(P)
 
-    img_izquierda = cv.imread('foto9.jpg')
-    img_derecha = cv.imread('foto10.jpg')
+    img_izquierda = cv.imread('foto5.jpg')
+    img_derecha = cv.imread('foto6.jpg')
 
     if img_izquierda is None or img_derecha is None:
         print("No se pudieron cargar las imágenes de prueba.")
