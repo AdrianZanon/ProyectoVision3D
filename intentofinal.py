@@ -444,7 +444,7 @@ def dibujar_lineas_epipolares_manuales(img_izquierda, img_derecha, F, puntos_izq
             x1, y1 = w, int(-(a * w + c) / b)
             cv.line(img_der, (x0, y0), (x1, y1), (0, 0, 255), 2)
 
-    # Mostrar imágenes
+    # Mostrar imágenes (redimensionadas al 50%)
     img_izq_resized = cv.resize(img_izq, None, fx=0.5, fy=0.5)
     img_der_resized = cv.resize(img_der, None, fx=0.5, fy=0.5)
 
@@ -472,7 +472,7 @@ def dibujar_lineas_epipolares_rectificadas(img1, img2, num_lineas=15):
         # Línea en imagen derecha
         cv.line(img2_color, (0, y), (w, y), color, 1)
 
-    # Mostrar imágenes
+    # Mostrar imágenes (redimensionadas al 50%)
     img1_resized = cv.resize(img1_color, None, fx=0.5, fy=0.5)
     img2_resized = cv.resize(img2_color, None, fx=0.5, fy=0.5)
 
@@ -492,8 +492,8 @@ if __name__ == '__main__':
 
     _, R, t = descomponer_proyeccion(P)
 
-    img_izquierda = cv.imread('foto5.jpg')
-    img_derecha = cv.imread('foto6.jpg')
+    img_izquierda = cv.imread('foto3.jpg')
+    img_derecha = cv.imread('foto4.jpg')
 
     if img_izquierda is None or img_derecha is None:
         print("No se pudieron cargar las imágenes de prueba.")
@@ -553,8 +553,9 @@ if __name__ == '__main__':
         pt_int = tuple(map(int, pt))
         cv.circle(img_izquierda_rect_con_puntos, pt_int, 8, (0, 255, 0), -1)
 
-    # Mostrar imágenes con puntos
-    cv.imshow('Imagen Izquierda Rectificada con Puntos', cv.resize(img_izquierda_rect_con_puntos, None, fx=0.5, fy=0.5))
+    # Mostrar imágenes con puntos (redimensionadas al 50%)
+    cv.imshow('Imagen Izquierda Rectificada con Puntos',
+              cv.resize(img_izquierda_rect_con_puntos, None, fx=0.5, fy=0.5))
     cv.waitKey(0)
 
     # Dibujar líneas epipolares horizontales en imágenes rectificadas
@@ -577,11 +578,13 @@ if __name__ == '__main__':
         pt_int = tuple(map(int, pt))
         cv.circle(img_izquierda_rect_con_lineas, pt_int, 8, (0, 255, 0), -1)
 
-    # Mostrar imágenes finales con puntos y líneas
+    # Mostrar imágenes finales con puntos y líneas (redimensionadas al 50%)
     cv.imshow('Imagen Izquierda Rectificada - Puntos y Líneas',
-              cv.resize(img_izquierda_rect_con_lineas, None, fx=0.5, fy=0.5))
+              cv.resize(img_izquierda_rect_con_lineas, None, fx=0.4, fy=0.4))
     cv.imshow('Imagen Derecha Rectificada - Líneas',
-              cv.resize(img_derecha_rect_con_lineas, None, fx=0.5, fy=0.5))
+              cv.resize(img_derecha_rect_con_lineas, None, fx=0.4, fy=0.4))
+    cv.imshow('Rectified Left - Epipolar Lines', img_izquierda_rect_con_lineas)
+    cv.imshow('Rectified Right - Epipolar Lines', img_derecha_rect_con_lineas)
     cv.waitKey(0)
     cv.destroyAllWindows()
 
